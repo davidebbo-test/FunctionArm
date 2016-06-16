@@ -1,0 +1,90 @@
+{
+  "$schema":"http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion":"1.0.0.0",
+  "parameters":{
+    "siteName":{
+      "type":"string"
+    },
+    "location":{
+      "type":"string",
+      "allowedValues":[
+        "westus",
+        "westeurope",
+        "southeastasia"
+      ]
+    }
+  },
+  "variables": {
+    "storageAccountName": "[toLower(parameters('siteName'))]",
+    "storageAccountType": "Standard_LRS",
+    "storageAccountid": "[concat(resourceGroup().id,'/providers/','Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]"
+  },
+  "resources":[
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[variables('storageAccountName')]",
+      "apiVersion": "2015-05-01-preview",
+      "location": "[parameters('location')]",
+      "properties": {
+        "accountType": "[variables('storageAccountType')]"
+      }
+    },
+    {
+      "apiVersion":"2015-08-01",
+      "name":"[parameters('siteName')]",
+      "type":"Microsoft.Web/sites",
+      "kind": "functionapp",
+      "location":"[parameters('location')]",
+      "properties": {
+      },
+      "resources": [
+        {
+          "apiVersion": "2015-08-01",
+          "name": "MyFunction",
+          "type": "functions",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"
+          ],
+          "properties": {
+            "config": {
+              "bindings": [
+                {
+                  "webHookType": "genericJson",
+                  "type": "httpTrigger",
+                  "direction": "in",
+                  "name": "req"
+                },
+                {
+                  "type": "http",
+                  "direction": "out",
+                  "name": "res"
+                }
+              ]
+            },
+            "files": {
+              "index.js": "module.exports = function (context, data) {\r\n    context.res = {\r\n        body: { greeting: 'Hello ' + data.first + ' ' + data.last + '!'}\r\n    };\r\n\r\n    context.done();\r\n};\r\n"
+            },
+            "test_data": "{ 'first': 'David', 'last': 'Ebbo' }"
+          }
+        },
+        {
+          "apiVersion": "2015-08-01",
+          "name": "appsettings",
+          "type": "config",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]",
+            "[resourceId('Microsoft.Web/Sites/functions', parameters('siteName'), 'MyFUnction')]",
+            "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+          ],
+          "properties": {
+            "AzureWebJobsStorage": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(variables('storageAccountid'),'2015-05-01-preview').key1)]",
+            "AzureWebJobsDashboard": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(variables('storageAccountid'),'2015-05-01-preview').key1)]",
+            "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(variables('storageAccountid'),'2015-05-01-preview').key1)]",
+            "AZUREJOBS_EXTENSION_VERSION": "beta",
+            "FUNCTIONS_EXTENSION_VERSION": "~0.2"
+          }
+        }
+      ]
+    }
+  ]
+}
